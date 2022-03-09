@@ -42,10 +42,8 @@ impl Mask {
                     if sc != c {
                         return Ok(false);
                     }
-                } else {
-                    if sc > c {
-                        return Ok(false);
-                    }
+                } else if sc > c {
+                    return Ok(false);
                 }
             }
 
@@ -69,19 +67,20 @@ impl Mask {
             }
 
             for (count, (all, ry)) in self.count.iter_mut().zip(stats) {
-                if all > ry {
-                    *count = (ry & 0b0111_1111) + 0b1000_0000;
-                } else {
-                    *count = all & 0b0111_1111;
+                if *count & 0b1000_0000 == 0 {
+                    if all > ry {
+                        *count = (ry & 0b0111_1111) + 0b1000_0000;
+                    } else if *count < all {
+                        *count = all;
+                    }
                 }
             }
 
             // update mask
             // red
             for ((i, c), rs) in word.char_indices().zip(&result.state) {
-                match rs {
-                    ResultColor::Red => self.mask[i].set(c),
-                    _ => {}
+                if *rs == ResultColor::Red {
+                    self.mask[i].set(c);
                 }
             }
 
@@ -92,7 +91,7 @@ impl Mask {
             }
 
             for ((i, sc), c) in self.count.iter().enumerate().zip(count) {
-                let char = (i as u8 + 'a' as u8) as char;
+                let char = (i as u8 + b'a') as char;
                 let exact = sc & 0b1000_0000 != 0;
                 let sc = sc & 0b0111_1111;
 
@@ -115,17 +114,13 @@ impl Mask {
         }
     }
 
-    pub fn find_best(&self, dico: &Vec<String>) -> Result<(usize, f32), MaskError> {
+    pub fn find_best(&self, dico: &[String]) -> Result<(usize, f32), MaskError> {
         let mut best_progress = (0, dico.len() as f32);
         let mut res = ResultState::new(self.mask.len());
         let mut self_clone = self.clone();
-        let mut targets_show = true;
+        // let mut targets_show = true;
 
         for (idx, word) in dico.iter().enumerate() {
-            if !self.match_with(word)? {
-                continue;
-            }
-
             let mut matchs = 0.0;
             let mut sum = 0.0;
 
@@ -134,26 +129,26 @@ impl Mask {
                     continue;
                 }
 
-                if targets_show {
-                    println!("possibility: {}", target);
-                }
+                // if targets_show {
+                //     println!("possibility: {}", target);
+                // }
 
                 res.update_with(word, target)?;
                 self_clone.update(word, &res)?;
-                let score = self_clone.filter(dico)? as f32;
+                let score = self_clone.filter(dico)?;
 
-                if score > 0.0 {
+                if score > 1 || (score == 1 && res.complet()) {
+                    sum += score as f32;
                     matchs += 1.0;
-                    sum += score;
                 }
 
                 self_clone.revert_from(self)?;
             }
 
-            targets_show = false;
+            // targets_show = false;
             let avg = sum / matchs;
             if avg < best_progress.1 {
-                println!("{} ({:.2})", word, avg);
+                // println!("{} ({:>5.2})", word, avg);
                 best_progress = (idx, avg);
             }
         }
@@ -161,7 +156,7 @@ impl Mask {
         Ok(best_progress)
     }
 
-    fn filter(&self, dico: &Vec<String>) -> Result<usize, MaskError> {
+    pub fn filter(&self, dico: &[String]) -> Result<usize, MaskError> {
         let mut count = 0;
 
         for word in dico {
@@ -171,18 +166,6 @@ impl Mask {
         }
 
         Ok(count)
-    }
-
-    pub fn filter_dico<'a>(&self, dico: &'a Vec<String>) -> Result<Vec<&'a String>, MaskError> {
-        let mut matchs = Vec::with_capacity(25);
-
-        for word in dico {
-            if self.match_with(word)? {
-                matchs.push(word);
-            }
-        }
-
-        Ok(matchs)
     }
 
     fn revert_from(&mut self, rhs: &Mask) -> Result<(), MaskError> {
@@ -222,7 +205,7 @@ impl std::fmt::Debug for Mask {
                 _ => unreachable!(),
             };
             let count = c & 0b0111_1111;
-            let char = (i as u8 + 'a' as u8) as char;
+            let char = (i as u8 + b'a') as char;
 
             write!(f, "{}:{}{} ", char, count, exact)?;
         }
@@ -265,23 +248,16 @@ impl LetterMask {
     }
 
     fn red_char(&self) -> Option<char> {
-        let result = ('a'..='z').fold(Ok(None), |acc, c| {
-            match acc {
-                Ok(None) => if self.match_with(c) { Ok(Some(c)) } else { acc }
-                Ok(Some(_)) => if self.match_with(c) { Err(()) } else { acc },
-                Err(_) => acc
-            }
-        });
-
-        match result {
-            Ok(red) => red,
-            Err(_) => None,
+        if self.0.count_ones() == 1 {
+            Some(('a' as u32 + self.0.trailing_zeros()) as u8 as char)
+        } else {
+            None
         }
     }
 
     #[inline(always)]
     fn mask(char: char) -> u32 {
-        1 << (char as u8 - 'a' as u8)
+        1 << (char as u8 - b'a')
     }
 }
 
@@ -427,10 +403,10 @@ mod tests {
         use super::ResultState;
 
         let rs1 = ResultState::new(6);
-        assert_eq!(format!("{}", rs1), "rbbbbb");
+        assert_eq!(rs1.to_string(), "rbbbbb");
 
         let rs2 = ResultState::new(9);
-        assert_eq!(format!("{}", rs2), "rbbbbbbbb");
+        assert_eq!(rs2.to_string(), "rbbbbbbbb");
     }
 
     #[test]
@@ -439,12 +415,12 @@ mod tests {
 
         let mut rs1 = ResultState::new(6);
         rs1.update_with("mourir", "manger").unwrap();
-        assert_eq!(format!("{}", rs1), "rbbbbr");
+        assert_eq!(rs1.to_string(), "rbbbbr");
 
         // guess isn't actualy a real word, but it will be fine
         let mut rs2 = ResultState::new(8);
         rs2.update_with("mozozzgz", "montagne").unwrap();
-        assert_eq!(format!("{}", rs2), "rrbbbbyb");
+        assert_eq!(rs2.to_string(), "rrbbbbyb");
     }
 
     #[test]
@@ -461,6 +437,23 @@ mod tests {
         assert_eq!(rs2, ResultState {
             state: vec![Red, Red, Blue, Blue, Blue, Blue, Yellow, Blue]
         });
+    }
+
+    #[test]
+    fn red_char() {
+        use super::LetterMask;
+
+        let a = LetterMask(1 << 0);
+        assert_eq!(a.red_char(), Some('a'));
+
+        let m = LetterMask(1 << 12);
+        assert_eq!(m.red_char(), Some('m'));
+
+        let z = LetterMask(1 << 25);
+        assert_eq!(z.red_char(), Some('z'));
+
+        let oops = LetterMask((1 << 6) + (1 << 18));
+        assert_eq!(oops.red_char(), None);
     }
 
     #[test]
