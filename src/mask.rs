@@ -84,7 +84,7 @@ impl Mask {
                 }
             }
 
-            // others
+            // yellow
             let mut count = [0; 26];
             for c in self.mask.iter().filter_map(|lm| lm.red_char()) {
                 count[c as usize - 'a' as usize] += 1;
@@ -300,7 +300,7 @@ impl ResultState {
                         continue 'target;
                     }
 
-                    if g == t {
+                    if g == t && self.state[ig] == ResultColor::Blue {
                         self.state[ig] = ResultColor::Yellow;
                         used |= mask;
 
@@ -417,10 +417,14 @@ mod tests {
         rs1.update_with("mourir", "manger").unwrap();
         assert_eq!(rs1.to_string(), "rbbbbr");
 
+        let mut rs2 = ResultState::new(7);
+        rs2.update_with("marines", "manager").unwrap();
+        assert_eq!(rs2.to_string(), "rrybyrb");
+
         // guess isn't actualy a real word, but it will be fine
-        let mut rs2 = ResultState::new(8);
-        rs2.update_with("mozozzgz", "montagne").unwrap();
-        assert_eq!(rs2.to_string(), "rrbbbbyb");
+        let mut rs3 = ResultState::new(8);
+        rs3.update_with("mozozzgz", "montagne").unwrap();
+        assert_eq!(rs3.to_string(), "rrbbbbyb");
     }
 
     #[test]
@@ -454,19 +458,5 @@ mod tests {
 
         let oops = LetterMask((1 << 6) + (1 << 18));
         assert_eq!(oops.red_char(), None);
-    }
-
-    #[test]
-    fn real_case() {
-        use super::ResultColor::*;
-        use super::ResultState;
-        use super::Mask;
-
-        let mut mask = Mask::new('i', 8);
-        mask.update("inseminee", &ResultState {
-            state: vec![Red, Red, Yellow, Red, Blue, Blue, Yellow, Red, Yellow],
-        }).unwrap();
-
-        println!("{:?}", mask);
     }
 }

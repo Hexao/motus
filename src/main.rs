@@ -30,10 +30,17 @@ impl std::str::FromStr for MaskDescriptor {
 }
 
 #[derive(StructOpt)]
+/// is some flag is provided, search pattern will be ignored
 struct Args {
+    /// shound match pattern /[a-z][5-8]/
     pub search: Option<MaskDescriptor>,
 
-    #[structopt(long)]
+    #[structopt(long, short)]
+    /// You want play but you haven't friends ? So just give it a word
+    pub auto: Option<String>,
+
+    #[structopt(long, short)]
+    /// bench a specific dictionary. <bench> must be letter
     pub bench: Option<char>,
 }
 
@@ -41,12 +48,23 @@ struct Args {
 // inventees
 
 fn main() {
-    let start = std::time::Instant::now();
+    let mut args = Args::from_args();
 
-    let args = Args::from_args();
-    let start = log_section(start, "Args parsed");
+    if let Some(word) = &args.auto {
+        let word_len = word.len();
+
+        if !(6..=9).contains(&word_len) {
+            eprintln!("word don't have the correct length!");
+            args.search = None;
+            args.bench = None;
+        } else {
+            let dico = word.chars().next().unwrap();
+            args.search = Some(MaskDescriptor { dico, len: word_len as u8 - 1 });
+        }
+    }
 
     if let Some(mask_desc) = args.search {
+        let start = std::time::Instant::now();
         let (dico, mut best) = match dico::load(mask_desc.dico, mask_desc.len + 1) {
             Ok(dico) => dico,
             Err(error) => {
@@ -56,13 +74,20 @@ fn main() {
         };
 
         if dico.is_empty() {
-            print!("No world of len {} found in '{}.txt'", mask_desc.len, mask_desc.dico);
+            eprintln!("No world of len {} found in '{}.txt'", mask_desc.len, mask_desc.dico);
             return;
+        }
+
+        if let Some(word) = &args.auto {
+            if !dico.contains(word) {
+                eprintln!("The word '{}' won't be found: not in the dictionary", word);
+                return;
+            }
         }
 
         let mut mask = mask::Mask::new(mask_desc.dico, mask_desc.len);
         let mut result = mask::ResultState::new(mask_desc.len as usize + 1);
-        log_section(start, "Dico loaded");
+        println!("Dico loaded in {}µs ({} words)", start.elapsed().as_micros(), dico.len());
 
         while !result.complet() {
             let start = std::time::Instant::now();
@@ -87,37 +112,69 @@ fn main() {
                 word_id
             };
 
-            let mut buf = String::with_capacity(10);
+            if let Some(word) = &args.auto {
+                if let Err(err) = result.update_with(&dico[word_id], word) {
+                    eprintln!("{}", err);
+                    return;
+                }
+
+                println!("Result: {}", result);
+
+                if let Err(err) = mask.update(&dico[word_id], &result) {
+                    eprintln!("{}", err);
+                    return;
+                }
+            } else {
+                let mut buf = String::with_capacity(10);
+
+                result = loop {
+                    buf.clear();
+                    print!("Result: ");
+                    std::io::stdout().flush().unwrap();
+
+                    if let Err(err) = std::io::stdin().read_line(&mut buf) {
+                        eprintln!("{}", err);
+                        return;
+                    }
+
+                    let rs: mask::ResultState = match buf.trim().try_into() {
+                        Ok(rs) => rs,
+                        Err(err) => {
+                            eprintln!("{}", err);
+                            continue;
+                        }
+                    };
+
+                    match mask.update(&dico[word_id], &rs) {
+                        Err(err) => eprintln!("{}", err),
+                        Ok(()) => break rs,
+                    }
+                }
+            };
 
             match mask.filter(&dico) {
-                Ok(possibility) => if possibility == 1 {
-                    return;
-                },
+                Ok(possibilities) => {
+                    if possibilities == 1 {
+                        if !result.complet() {
+                            let word_id = match mask.find_best(&dico) {
+                                Ok((word_id, _)) => word_id,
+                                Err(err) => {
+                                    eprintln!("{}", err);
+                                    return;
+                                }
+                            };
+
+                            println!("Obviously: {}", dico[word_id]);
+                            return;
+                        }
+                    } else {
+                        println!("{} words remaining", possibilities);
+                    }
+                }
                 Err(err) => {
                     eprintln!("{}", err);
                     return;
                 }
-            };
-
-            result = loop {
-                buf.clear();
-                print!("Result: ");
-                std::io::stdout().flush().unwrap();
-
-                if let Err(err) = std::io::stdin().read_line(&mut buf) {
-                    eprintln!("{}", err);
-                    return;
-                }
-
-                match buf.trim().try_into() {
-                    Ok(rs) => break rs,
-                    Err(err) => eprintln!("{}", err),
-                }
-            };
-
-            if let Err(err) = mask.update(&dico[word_id], &result) {
-                eprintln!("{}", err);
-                return;
             }
 
             // println!("{:?}", mask);
@@ -144,10 +201,7 @@ fn main() {
 
             println!("For words of len {}, best word is {} ({}) in {:.2}s", word_len, dico[word_id], word_id, start.elapsed().as_secs_f32());
         }
+    } else if let Err(err) = Args::clap().print_help() {
+        eprintln!("{}", err);
     }
-}
-
-fn log_section(start: std::time::Instant, msg: &str) -> std::time::Instant {
-    println!("{} in {}µs", msg, start.elapsed().as_micros());
-    std::time::Instant::now()
 }
