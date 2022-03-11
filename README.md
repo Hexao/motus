@@ -1,12 +1,12 @@
 # MOTUS
 
-Current dictionaries are provided in french and can contain some words not included in official motus dictionary. In addition, dictionary must contains only characters among `/[a-z]/`. Otherwise il will produce some errors during dictionary loading. Finally, dictionary must start with four empty rows or IDs ([see bellow][1])
+Current dictionaries are provided in french and can contain some words not included in the official Motus dictionary. Additionally, dictionaries must contain only characters in `/[a-z]/`, otherwise it will produce errors when loading. Finally, dictionaries must start with four empty rows or IDs ([see below][1]).
 
-Tips: All commands use the release mod. For more details, see `cargo -h` and `cargo run -h`
+Tips: All commands use the `release` flag. For more detail, see `cargo -h` and `cargo run -h`.
 
 ## Usage: Find a word
 
-This is the normal use of this program. Simply give it the first letter and the number of unknown letters and it will print something like that:
+This is the normal use of this program. Simply give it the first letter and the number of unknown letters and it will print something like this:
 
 ```sh
 $ cargo r -r -- b7
@@ -15,7 +15,7 @@ Best word: brulions
 Result:
 ```
 
-At this point, you must give it the anwser the motus game give you, something like "rybyybbb". 'r' for a correct char at the wright place, 'y' for a correct char at the wrong place and 'b' for an incorrect char. Then, it will continue:
+At this point, you have to input the answer given by the game, something like "rybyybbb". 'r' for a correct character at the right place, 'y' for a correct character at the wrong place and 'b' for an incorrect character. Then, it will continue until the correct word is found:
 
 ```sh
 $ cargo r -r -- b7
@@ -29,11 +29,11 @@ Result: rybyybby
 Obviously: blizzard
 ```
 
-Once you give the result, the program print how many possible words left in the dictionary, or "Obviously" followed by the only possible word. If there is more than one word, the program will print the next best word with the average words remainings after this try in brackets.
+Once you input the result, the program prints how many possible words are left in the dictionary, or "Obviously" followed by the only possible word. If there is more than one word, the program will print the next best word with the average words remainings after this try in brackets.
 
 ## Usage: bench a dictionary
 
-You can bench a specific dictionary and find which word is the best to start a try. To do this, simply replace `b7` in the previous exemple with the `--bench` flag followed by the dictionary name. It will print something like:
+You can bench a specific dictionary to find which word is the best to start a try with. To do this, simply replace `b7` in the previous exemple with the `--bench` flag followed by the dictionary name. It will print something like this:
 
 ```sh
 $ cargo r -r -- --bench p
@@ -48,7 +48,7 @@ Or leave the four first lines empty to disable this feature
 
 ## Usage: auto-play
 
-If you already know which word you should find, you can do a run with the same output as [the 1st part][2] but without need to put the result. To do this, simply type:
+If you already know which word you should find, you can do a run with the same output as [the 1st part][2] but without having to input the results. To do this, simply type:
 
 ```sh
 $ cargo r -r -- -a blizzard

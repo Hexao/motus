@@ -1,4 +1,7 @@
+// use std::io::Write as flush;
 use std::fmt::Write;
+
+const A_USIZE: usize = b'a' as usize;
 
 #[derive(Clone)]
 pub struct Mask {
@@ -9,12 +12,8 @@ pub struct Mask {
 impl Mask {
     /// len doesn't count start char !
     pub fn new(start: char, len: u8) -> Self {
-        let mut mask = Vec::with_capacity(len as usize + 1);
-        mask.push(LetterMask::new(start));
-
-        for _ in 0..len {
-            mask.push(LetterMask::default());
-        }
+        let mut mask = vec![LetterMask::default(); len as usize + 1];
+        mask[0].set(start as u8);
 
         Self { mask, count: [0; 26] }
     }
@@ -22,19 +21,19 @@ impl Mask {
     pub fn match_with(&self, word: &str) -> Result<bool, MaskError> {
         if self.mask.len() == word.len() {
             let mask_match = self.mask
-                .iter().zip(word.chars())
-                .all(|(mask, char)| mask.match_with(char));
+                .iter().zip(word.as_bytes().iter())
+                .all(|(mask, &char)| mask.match_with(char));
 
             if !mask_match {
                 return Ok(false);
             }
 
             let mut count = [0; 26];
-            for c in word.chars() {
-                count[c as usize - 'a' as usize] += 1;
+            for &c in word.as_bytes().iter() {
+                count[c as usize - A_USIZE] += 1;
             }
 
-            for (sc, c) in self.count.iter().zip(count) {
+            for (&sc, c) in self.count.iter().zip(count) {
                 let exact = sc & 0b1000_0000 != 0;
                 let sc = sc & 0b0111_1111;
 
@@ -57,11 +56,11 @@ impl Mask {
         if self.mask.len() == word.len() && self.mask.len() == result.state.len() {
             // update count
             let mut stats = [(0, 0); 26];
-            for (c, rc) in word.chars().zip(&result.state) {
-                let index = c as usize - 'a' as usize;
+            for (&c, &rc) in word.as_bytes().iter().zip(&result.state) {
+                let index = c as usize - A_USIZE;
                 stats[index].0 += 1;
 
-                if *rc != ResultColor::Blue {
+                if rc != ResultColor::Blue {
                     stats[index].1 += 1;
                 }
             }
@@ -78,8 +77,8 @@ impl Mask {
 
             // update mask
             // red
-            for ((i, c), rs) in word.char_indices().zip(&result.state) {
-                if *rs == ResultColor::Red {
+            for ((i, &c), &rs) in word.as_bytes().iter().enumerate().zip(&result.state) {
+                if rs == ResultColor::Red {
                     self.mask[i].set(c);
                 }
             }
@@ -87,11 +86,11 @@ impl Mask {
             // yellow
             let mut count = [0; 26];
             for c in self.mask.iter().filter_map(|lm| lm.red_char()) {
-                count[c as usize - 'a' as usize] += 1;
+                count[c as usize - A_USIZE] += 1;
             }
 
-            for ((i, sc), c) in self.count.iter().enumerate().zip(count) {
-                let char = (i as u8 + b'a') as char;
+            for ((i, &sc), c) in self.count.iter().enumerate().zip(count) {
+                let char = i as u8 + b'a';
                 let exact = sc & 0b1000_0000 != 0;
                 let sc = sc & 0b0111_1111;
 
@@ -100,11 +99,15 @@ impl Mask {
                         lm.remove(char);
                     }
                 } else {
-                    word.char_indices().filter(|(_, c)| *c == char).for_each(|(i, _)| {
-                        if self.mask[i].red_char().is_none() {
-                            self.mask[i].remove(char);
-                        }
-                    })
+                    word.as_bytes()
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, &c)| c == char)
+                        .for_each(|(i, _)| {
+                            if self.mask[i].red_char().is_none() {
+                                self.mask[i].remove(char);
+                            }
+                        })
                 }
             }
 
@@ -115,10 +118,9 @@ impl Mask {
     }
 
     pub fn find_best(&self, dico: &[String]) -> Result<(usize, f32), MaskError> {
-        let mut best_progress = (0, dico.len() as f32);
         let mut res = ResultState::new(self.mask.len());
+        let mut best_progress = (0, f32::MAX);
         let mut self_clone = self.clone();
-        // let mut targets_show = true;
 
         for (idx, word) in dico.iter().enumerate() {
             let mut matchs = 0.0;
@@ -128,10 +130,6 @@ impl Mask {
                 if !self.match_with(target)? {
                     continue;
                 }
-
-                // if targets_show {
-                //     println!("possibility: {}", target);
-                // }
 
                 res.update_with(word, target)?;
                 self_clone.update(word, &res)?;
@@ -145,14 +143,17 @@ impl Mask {
                 self_clone.revert_from(self)?;
             }
 
-            // targets_show = false;
             let avg = sum / matchs;
             if avg < best_progress.1 {
-                // println!("{} ({:>5.2})", word, avg);
                 best_progress = (idx, avg);
             }
+
+            // \x1B[1K clear the line \x1b[1G place the cursor in the first col
+            // print!("\x1B[1K\rBest: {} ({:>5.2}) | current: {word} ({avg:>5.2})", dico[best_progress.0], best_progress.1);
+            // std::io::stdout().flush().unwrap();
         }
 
+        // println!();
         Ok(best_progress)
     }
 
@@ -187,9 +188,9 @@ impl std::fmt::Debug for Mask {
         for (i, lm) in self.mask.iter().enumerate() {
             write!(f, "{}:", i)?;
 
-            for c in 'a'..='z' {
+            for c in b'a'..=b'z' {
                 if lm.match_with(c) {
-                    f.write_char(c)?;
+                    f.write_char(c as char)?;
                 } else {
                     f.write_char(' ')?;
                 }
@@ -198,8 +199,8 @@ impl std::fmt::Debug for Mask {
             f.write_char('\n')?;
         }
 
-        for (i, c) in self.count.iter().enumerate() {
-            let exact = match (*c) & 0b1000_0000 {
+        for (i, &c) in self.count.iter().enumerate() {
+            let exact = match c & 0b1000_0000 {
                 0b0000_0000 => '+',
                 0b1000_0000 => '!',
                 _ => unreachable!(),
@@ -231,33 +232,29 @@ impl std::fmt::Display for MaskError {
 struct LetterMask(u32);
 
 impl LetterMask {
-    fn new(char: char) -> Self {
-        Self(Self::mask(char))
-    }
-
-    fn remove(&mut self, char: char) {
+    fn remove(&mut self, char: u8) {
         self.0 &= u32::MAX ^ Self::mask(char);
     }
 
-    fn set(&mut self, char: char) {
+    fn set(&mut self, char: u8) {
         self.0 = Self::mask(char);
     }
 
-    fn match_with(&self, char: char) -> bool {
+    fn match_with(&self, char: u8) -> bool {
         self.0 & Self::mask(char) != 0
     }
 
-    fn red_char(&self) -> Option<char> {
+    fn red_char(&self) -> Option<u8> {
         if self.0.count_ones() == 1 {
-            Some(('a' as u32 + self.0.trailing_zeros()) as u8 as char)
+            Some(b'a' + self.0.trailing_zeros() as u8)
         } else {
             None
         }
     }
 
     #[inline(always)]
-    fn mask(char: char) -> u32 {
-        1 << (char as u8 - b'a')
+    fn mask(char: u8) -> u32 {
+        1 << (char - b'a')
     }
 }
 
@@ -286,14 +283,18 @@ impl ResultState {
             let mut used = 0_u16;
 
             // update red cells
-            guess.char_indices().zip(target.chars()).for_each(|((i, g), t)| if g == t {
-                self.state[i] = ResultColor::Red;
-                used |= 1 << i;
-            });
+            guess.as_bytes()
+                .iter()
+                .enumerate()
+                .zip(target.as_bytes().iter())
+                .for_each(|((i, &g), &t)| if g == t {
+                    self.state[i] = ResultColor::Red;
+                    used |= 1 << i;
+                });
 
             // update possible yellow cells
-            'guess: for (ig, g) in guess.char_indices() {
-                'target: for (it, t) in target.char_indices() {
+            'guess: for (ig, &g) in guess.as_bytes().iter().enumerate() {
+                'target: for (it, &t) in target.as_bytes().iter().enumerate() {
                     let mask = 1 << it;
 
                     if used & mask != 0 {
@@ -448,13 +449,13 @@ mod tests {
         use super::LetterMask;
 
         let a = LetterMask(1 << 0);
-        assert_eq!(a.red_char(), Some('a'));
+        assert_eq!(a.red_char(), Some(b'a'));
 
         let m = LetterMask(1 << 12);
-        assert_eq!(m.red_char(), Some('m'));
+        assert_eq!(m.red_char(), Some(b'm'));
 
         let z = LetterMask(1 << 25);
-        assert_eq!(z.red_char(), Some('z'));
+        assert_eq!(z.red_char(), Some(b'z'));
 
         let oops = LetterMask((1 << 6) + (1 << 18));
         assert_eq!(oops.red_char(), None);

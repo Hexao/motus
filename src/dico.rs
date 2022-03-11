@@ -14,7 +14,7 @@ pub fn load(dico: char, word_len: u8) -> Result<(Vec<String>, Option<usize>), Di
 
     let mut best = None;
     let word_len = word_len as usize;
-    let mut matchs = Vec::with_capacity(150);
+    let mut matchs = Vec::with_capacity(500);
 
     for _ in 0..4 {
         if let Some((line, row)) = dico.next() {

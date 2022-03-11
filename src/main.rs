@@ -152,6 +152,8 @@ fn main() {
                 }
             };
 
+            // println!("{:?}", mask);
+
             match mask.filter(&dico) {
                 Ok(possibilities) => {
                     if possibilities == 1 {
@@ -176,8 +178,6 @@ fn main() {
                     return;
                 }
             }
-
-            // println!("{:?}", mask);
         }
     } else if let Some(char) = args.bench {
         for word_len in 6..=9 {
