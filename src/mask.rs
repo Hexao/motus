@@ -123,6 +123,7 @@ impl Mask {
         let mut self_clone = self.clone();
 
         for (idx, word) in dico.iter().enumerate() {
+            let mut states = [0; 3_usize.pow(8)];
             let mut matchs = 0.0;
             let mut sum = 0.0;
 
@@ -132,19 +133,29 @@ impl Mask {
                 }
 
                 res.update_with(word, target)?;
+                let state_id = res.state_id();
+
+                if states[state_id] > 0 {
+                    sum += states[state_id] as f32;
+                    matchs += 1.0;
+                    continue;
+                }
+
                 self_clone.update(word, &res)?;
 
                 match self_clone.filter(dico) {
                     FilterResult::Err(err) => return Err(err),
                     FilterResult::Count(score) => {
+                        states[state_id] = score as u8;
                         sum += score as f32;
                         matchs += 1.0;
                     },
                     FilterResult::Word(_) => if res.complet() {
+                        states[state_id] = 1;
                         matchs += 1.0;
                         sum += 1.0;
                     },
-                };
+                }
 
                 self_clone.revert_from(self);
             }
@@ -331,8 +342,18 @@ impl ResultState {
         }
     }
 
+    fn state_id(&self) -> usize {
+        self.state.iter().fold(0, |state, rc| {
+            state * 3 + match rc {
+                ResultColor::Red => 0,
+                ResultColor::Yellow => 1,
+                ResultColor::Blue => 2,
+            }
+        })
+    }
+
     pub fn complet(&self) -> bool {
-        self.state.iter().all(|rc| *rc == ResultColor::Red)
+        self.state.iter().all(|&rc| rc == ResultColor::Red)
     }
 }
 
