@@ -21,7 +21,7 @@ impl std::str::FromStr for MaskDescriptor {
 
             let len = match iter.next().unwrap() {
                 len @ '5'..='8' => Ok(len as u8 - b'0'),
-                _ => Err("len must be between 5 and 9 included"),
+                _ => Err("len must be between 5 and 8 included"),
             }?;
 
             Ok(Self { dico, len })
@@ -155,25 +155,14 @@ fn main() {
             // println!("{:?}", mask);
 
             match mask.filter(&dico) {
-                Ok(possibilities) => {
-                    if possibilities == 1 {
-                        if !result.complet() {
-                            let word_id = match mask.find_best(&dico) {
-                                Ok((word_id, _)) => word_id,
-                                Err(err) => {
-                                    eprintln!("{}", err);
-                                    return;
-                                }
-                            };
-
-                            println!("Obviously: {}", dico[word_id]);
-                            return;
-                        }
-                    } else {
-                        println!("{} words remaining", possibilities);
-                    }
+                mask::FilterResult::Count(possibilities) => {
+                    println!("{} words remaining", possibilities);
                 }
-                Err(err) => {
+                mask::FilterResult::Word(word) => {
+                    println!("Obviously: {}", word);
+                    return;
+                }
+                mask::FilterResult::Err(err) => {
                     eprintln!("{}", err);
                     return;
                 }

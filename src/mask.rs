@@ -18,7 +18,7 @@ impl Mask {
         Self { mask, count: [0; 26] }
     }
 
-    pub fn match_with(&self, word: &str) -> Result<bool, MaskError> {
+    fn match_with(&self, word: &str) -> Result<bool, MaskError> {
         if self.mask.len() == word.len() {
             let mask_match = self.mask
                 .iter().zip(word.as_bytes().iter())
@@ -133,14 +133,20 @@ impl Mask {
 
                 res.update_with(word, target)?;
                 self_clone.update(word, &res)?;
-                let score = self_clone.filter(dico)?;
 
-                if score > 1 || (score == 1 && res.complet()) {
-                    sum += score as f32;
-                    matchs += 1.0;
-                }
+                match self_clone.filter(dico) {
+                    FilterResult::Err(err) => return Err(err),
+                    FilterResult::Count(score) => {
+                        sum += score as f32;
+                        matchs += 1.0;
+                    },
+                    FilterResult::Word(_) => if res.complet() {
+                        matchs += 1.0;
+                        sum += 1.0;
+                    },
+                };
 
-                self_clone.revert_from(self)?;
+                self_clone.revert_from(self);
             }
 
             let avg = sum / matchs;
@@ -157,29 +163,32 @@ impl Mask {
         Ok(best_progress)
     }
 
-    pub fn filter(&self, dico: &[String]) -> Result<usize, MaskError> {
+    pub fn filter<'a>(&self, dico: &'a[String]) -> FilterResult<'a> {
+        let mut last_match = 0;
         let mut count = 0;
 
-        for word in dico {
-            if self.match_with(word)? {
-                count += 1;
+        for (id, word) in dico.iter().enumerate() {
+            match self.match_with(word) {
+                Err(err) => return FilterResult::Err(err),
+                Ok(match_with) => if match_with {
+                    last_match = id;
+                    count += 1;
+                }
             }
         }
 
-        Ok(count)
+        if count == 1 {
+            FilterResult::Word(&dico[last_match])
+        } else {
+            FilterResult::Count(count)
+        }
     }
 
-    fn revert_from(&mut self, rhs: &Mask) -> Result<(), MaskError> {
-        if self.mask.len() == rhs.mask.len() {
-            self.count = rhs.count;
-            self.mask
-                .iter_mut().zip(&rhs.mask)
-                .for_each(|(lhs, rhs)| *lhs = *rhs);
-
-            Ok(())
-        } else {
-            Err(MaskError::IncompatibleLen("revert_from"))
-        }
+    fn revert_from(&mut self, rhs: &Mask) {
+        self.count = rhs.count;
+        self.mask
+            .iter_mut().zip(&rhs.mask)
+            .for_each(|(lhs, rhs)| *lhs = *rhs);
     }
 }
 
@@ -213,6 +222,12 @@ impl std::fmt::Debug for Mask {
 
         Ok(())
     }
+}
+
+pub enum FilterResult<'a> {
+    Count(usize),
+    Word(&'a str),
+    Err(MaskError),
 }
 
 #[derive(Debug)]
