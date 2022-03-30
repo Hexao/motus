@@ -21,7 +21,7 @@ impl Mask {
     fn match_with(&self, word: &str) -> Result<bool, MaskError> {
         if self.mask.len() == word.len() {
             let mask_match = self.mask
-                .iter().zip(word.as_bytes().iter())
+                .iter().zip(word.as_bytes())
                 .all(|(mask, &char)| mask.match_with(char));
 
             if !mask_match {
@@ -29,7 +29,7 @@ impl Mask {
             }
 
             let mut count = [0; 26];
-            for &c in word.as_bytes().iter() {
+            for &c in word.as_bytes() {
                 count[c as usize - A_USIZE] += 1;
             }
 
@@ -68,7 +68,7 @@ impl Mask {
             for (count, (all, ry)) in self.count.iter_mut().zip(stats) {
                 if *count & 0b1000_0000 == 0 {
                     if all > ry {
-                        *count = (ry & 0b0111_1111) + 0b1000_0000;
+                        *count = ry | 0b1000_0000;
                     } else if *count < all {
                         *count = all;
                     }
@@ -77,10 +77,15 @@ impl Mask {
 
             // update mask
             // red
-            for ((i, &c), &rs) in word.as_bytes().iter().enumerate().zip(&result.state) {
-                if rs == ResultColor::Red {
-                    self.mask[i].set(c);
-                }
+            let iterator = word.as_bytes().iter()
+                .enumerate()
+                .zip(&result.state)
+                .filter_map(|(data, &rs)|
+                    if rs == ResultColor::Red { Some(data) } else { None }
+                );
+
+            for (i, &c) in iterator {
+                self.mask[i].set(c);
             }
 
             // yellow
@@ -95,19 +100,14 @@ impl Mask {
                 let sc = sc & 0b0111_1111;
 
                 if exact && sc == c {
-                    for lm in self.mask.iter_mut().filter(|lm| lm.red_char().is_none()) {
+                    for lm in &mut self.mask {
                         lm.remove(char);
                     }
                 } else {
-                    word.as_bytes()
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, &c)| c == char)
-                        .for_each(|(i, _)| {
-                            if self.mask[i].red_char().is_none() {
-                                self.mask[i].remove(char);
-                            }
-                        })
+                    word.as_bytes().iter()
+                        .zip(&mut self.mask)
+                        .filter(|(&c, _)| c == char)
+                        .for_each(|(_, mask)| mask.remove(char));
                 }
             }
 
@@ -118,20 +118,28 @@ impl Mask {
     }
 
     pub fn find_best(&self, dico: &[String]) -> Result<(usize, f32), MaskError> {
+        let mut valid_target = Vec::with_capacity(dico.len());
         let mut res = ResultState::new(self.mask.len());
         let mut best_progress = (0, f32::MAX);
         let mut self_clone = self.clone();
+
+        // update valid target
+        for target in dico.iter() {
+            valid_target.push(self.match_with(target)?);
+        }
 
         for (idx, word) in dico.iter().enumerate() {
             let mut states = [0; 3_usize.pow(8)];
             let mut matchs = 0.0;
             let mut sum = 0.0;
 
-            for target in dico.iter() {
-                if !self.match_with(target)? {
-                    continue;
-                }
+            let iterator = dico.iter()
+                .zip(&valid_target)
+                .filter_map(|(target, &valid)|
+                    if valid { Some(target) } else { None }
+                );
 
+            for target in iterator {
                 res.update_with(word, target)?;
                 let state_id = res.state_id();
 
@@ -166,7 +174,7 @@ impl Mask {
             }
 
             // \x1B[1K clear the line \x1b[1G place the cursor in the first col
-            // print!("\x1B[1K\rBest: {} ({:>5.2}) | current: {word} ({avg:>5.2})", dico[best_progress.0], best_progress.1);
+            // print!("\x1B[1K\rBest: {} ({:.2}) | current: {word} ({avg:.2})", dico[best_progress.0], best_progress.1);
             // std::io::stdout().flush().unwrap();
         }
 
@@ -259,7 +267,9 @@ struct LetterMask(u32);
 
 impl LetterMask {
     fn remove(&mut self, char: u8) {
-        self.0 &= u32::MAX ^ Self::mask(char);
+        if self.0.count_ones() > 1 {
+            self.0 &= u32::MAX - Self::mask(char);
+        }
     }
 
     fn set(&mut self, char: u8) {
@@ -312,7 +322,7 @@ impl ResultState {
             guess.as_bytes()
                 .iter()
                 .enumerate()
-                .zip(target.as_bytes().iter())
+                .zip(target.as_bytes())
                 .for_each(|((i, &g), &t)| if g == t {
                     self.state[i] = ResultColor::Red;
                     used |= 1 << i;
