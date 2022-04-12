@@ -1,5 +1,10 @@
 // use std::io::Write as flush;
 use std::fmt::Write;
+use rayon::iter::{
+    IntoParallelRefIterator,
+    IndexedParallelIterator,
+    ParallelIterator
+};
 
 const A_USIZE: usize = b'a' as usize;
 
@@ -119,25 +124,27 @@ impl Mask {
 
     pub fn find_best(&self, dico: &[String]) -> Result<(usize, f32), MaskError> {
         let mut valid_target = Vec::with_capacity(dico.len());
-        let mut res = ResultState::new(self.mask.len());
-        let mut best_progress = (0, f32::MAX);
-        let mut self_clone = self.clone();
 
         // update valid target
         for target in dico.iter() {
             valid_target.push(self.match_with(target)?);
         }
 
-        for (idx, word) in dico.iter().enumerate() {
+        let best_progress = dico.par_iter().enumerate().fold(|| Ok((0, f32::MAX)), |best, (idx, word)| {
+            let best_progress = match best {
+                Ok(best) => best,
+                _ => return best,
+            };
+
+            let mut res = ResultState::new(self.mask.len());
+            let mut self_clone = self.clone();
+
             let mut states = [0; 3_usize.pow(8)];
             let mut matchs = 0.0;
             let mut sum = 0.0;
 
-            let iterator = dico.iter()
-                .zip(&valid_target)
-                .filter_map(|(target, &valid)|
-                    if valid { Some(target) } else { None }
-                );
+            let iterator = dico.iter().zip(&valid_target)
+                .filter_map(|(target, &valid)| if valid { Some(target) } else { None });
 
             for target in iterator {
                 res.update_with(word, target)?;
@@ -170,16 +177,29 @@ impl Mask {
 
             let avg = sum / matchs;
             if avg < best_progress.1 {
-                best_progress = (idx, avg);
+                Ok((idx, avg))
+            } else {
+                Ok(best_progress)
             }
 
             // \x1B[1K clear the line \x1b[1G place the cursor in the first col
             // print!("\x1B[1K\rBest: {} ({:.2}) | current: {word} ({avg:.2})", dico[best_progress.0], best_progress.1);
             // std::io::stdout().flush().unwrap();
-        }
+        }).reduce_with(|lhs, rhs| {
+            match (lhs, rhs) {
+                (Ok(lhs), Ok(rhs)) => {
+                    if lhs.1 <= rhs.1 {
+                        Ok(lhs)
+                    } else {
+                        Ok(rhs)
+                    }
+                }
+                (Err(e), _) | (_, Err(e)) => Err(e)
+            }
+        }).unwrap();
 
         // println!();
-        Ok(best_progress)
+        best_progress
     }
 
     pub fn filter<'a>(&self, dico: &'a[String]) -> FilterResult<'a> {
