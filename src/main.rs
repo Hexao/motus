@@ -65,7 +65,7 @@ fn main() {
 
     if let Some(mask_desc) = args.search {
         let start = std::time::Instant::now();
-        let (dico, mut best) = match dico::load(mask_desc.dico, mask_desc.len + 1) {
+        let dico = match dico::load(mask_desc.dico, mask_desc.len + 1) {
             Ok(dico) => dico,
             Err(error) => {
                 eprintln!("{}", error);
@@ -92,25 +92,16 @@ fn main() {
         while !result.complet() {
             let start = std::time::Instant::now();
 
-            let word_id = if best.is_some() {
-                let word_id = best.unwrap(); // SAFE
-                best = None;
-
-                println!("Best word: {}", dico[word_id]);
-                word_id
-            } else {
-                let (word_id, score) = match mask.find_best(&dico) {
-                    Ok(stats) => stats,
-                    Err(err) => {
-                        eprintln!("{}", err);
-                        return;
-                    }
-                };
-
-                println!("Word found in {:.2}s", start.elapsed().as_secs_f32());
-                println!("Best word: {} ({:.2})", dico[word_id], score);
-                word_id
+            let (word_id, score) = match mask.find_best(&dico) {
+                Ok(stats) => stats,
+                Err(err) => {
+                    eprintln!("{}", err);
+                    return;
+                }
             };
+
+            println!("Word found in {:.2}s", start.elapsed().as_secs_f32());
+            println!("Best word: {} ({:.2})", dico[word_id], score);
 
             if let Some(word) = &args.auto {
                 if let Err(err) = result.update_with(&dico[word_id], word) {
@@ -172,7 +163,7 @@ fn main() {
         for word_len in 6..=9 {
             let start = std::time::Instant::now();
             let dico = match dico::load(char, word_len) {
-                Ok((dico, _)) => dico,
+                Ok(dico) => dico,
                 Err(error) => {
                     eprintln!("{}", error);
                     return;

@@ -7,26 +7,13 @@ pub enum DicoError {
 }
 
 /// return the dico plus id of best word if provided by the dico
-pub fn load(dico: char, word_len: u8) -> Result<(Vec<String>, Option<usize>), DicoError> {
-    let mut dico = BufReader::new(
+pub fn load(dico: char, word_len: u8) -> Result<Vec<String>, DicoError> {
+    let dico = BufReader::new(
         std::fs::File::open(format!("dico/{}.txt", dico)).map_err(|_| DicoError::NoFile(dico))?
     ).lines().enumerate();
 
-    let mut best = None;
-    let word_len = word_len as usize;
     let mut matchs = Vec::with_capacity(500);
-
-    for _ in 0..4 {
-        if let Some((line, row)) = dico.next() {
-            if line == word_len - 6 {
-                if let Ok(row) = row {
-                    if let Ok(id) = row.parse() {
-                        best = Some(id);
-                    }
-                }
-            }
-        }
-    }
+    let word_len = word_len as usize;
 
     for (line, row) in dico {
         match row {
@@ -38,7 +25,7 @@ pub fn load(dico: char, word_len: u8) -> Result<(Vec<String>, Option<usize>), Di
         }
     }
 
-    Ok((matchs, best))
+    Ok(matchs)
 }
 
 fn is_valid_word(word: &str) -> Result<(), char> {
