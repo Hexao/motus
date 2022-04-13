@@ -23,6 +23,7 @@ impl Mask {
         Self { mask, count: [0; 26] }
     }
 
+    #[inline(always)]
     fn match_with(&self, word: &str) -> Result<bool, MaskError> {
         if self.mask.len() == word.len() {
             let mask_match = self.mask
@@ -57,6 +58,7 @@ impl Mask {
         }
     }
 
+    #[inline(always)]
     pub fn update(&mut self, word: &str, result: &ResultState) -> Result<(), MaskError> {
         if self.mask.len() == word.len() && self.mask.len() == result.state.len() {
             // update count
@@ -122,6 +124,7 @@ impl Mask {
         }
     }
 
+    #[inline(always)]
     pub fn find_best(&self, dico: &[String]) -> Result<(usize, f32), MaskError> {
         let mut valid_target = Vec::with_capacity(dico.len());
 
@@ -202,6 +205,7 @@ impl Mask {
         best_progress
     }
 
+    #[inline(always)]
     pub fn filter<'a>(&self, dico: &'a[String]) -> FilterResult<'a> {
         let mut last_match = 0;
         let mut count = 0;
@@ -223,6 +227,7 @@ impl Mask {
         }
     }
 
+    #[inline(always)]
     fn revert_from(&mut self, rhs: &Mask) {
         self.count = rhs.count;
         self.mask
@@ -286,20 +291,24 @@ impl std::fmt::Display for MaskError {
 struct LetterMask(u32);
 
 impl LetterMask {
+    #[inline(always)]
     fn remove(&mut self, char: u8) {
         if self.0.count_ones() > 1 {
             self.0 &= u32::MAX - Self::mask(char);
         }
     }
 
+    #[inline(always)]
     fn set(&mut self, char: u8) {
         self.0 = Self::mask(char);
     }
 
+    #[inline(always)]
     fn match_with(&self, char: u8) -> bool {
         self.0 & Self::mask(char) != 0
     }
 
+    #[inline(always)]
     fn red_char(&self) -> Option<u8> {
         if self.0.count_ones() == 1 {
             Some(b'a' + self.0.trailing_zeros() as u8)
